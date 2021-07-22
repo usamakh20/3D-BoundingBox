@@ -16,6 +16,7 @@ import time
 
 import numpy as np
 import cv2
+from sklearn.cluster import KMeans
 
 import torch
 from torchvision.models import vgg
@@ -54,6 +55,23 @@ parser.add_argument("--hide-debug", action="store_true",
                     help="Supress the printing of each 3d location")
 
 
+def dominantColors(img,clusters):
+    # convert to rgb from bgr
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # reshaping to a list of pixels
+    img = img.reshape((img.shape[0] * img.shape[1], 3))
+
+    # using k-means to cluster pixels
+    kmeans = KMeans(n_clusters=clusters)
+    kmeans.fit(img)
+
+    # the cluster centers are our dominant colors.
+    colors = kmeans.cluster_centers_
+
+    # returning after converting to integer from float
+    return colors.astype(int)
+
 def plot_regressed_3d_bbox(img, cam_to_img, box_2d, dimensions, alpha, theta_ray, img_2d=None):
     # the math! returns X, the corners used for constraint
     location, X = calc_location(dimensions, cam_to_img, box_2d, alpha, theta_ray)
@@ -70,6 +88,7 @@ def plot_regressed_3d_bbox(img, cam_to_img, box_2d, dimensions, alpha, theta_ray
 
 def main():
     FLAGS = parser.parse_args()
+    f = open("logs.txt", "a")
 
     # load torch
     weights_path = os.path.abspath(os.path.dirname(__file__)) + '/weights'
@@ -78,11 +97,11 @@ def main():
         print('No previous model found, please train first!')
         exit()
     else:
-        print('Using previous model %s' % model_lst[-1])
+        print('Using previous model %s\n' % model_lst[-1])
         my_vgg = vgg.vgg19_bn(pretrained=True)
         # TODO: load bins from file or something
         model = Model.Model(features=my_vgg.features, bins=2)
-        checkpoint = torch.load(weights_path + '/%s' % model_lst[-1],map_location='cpu')
+        checkpoint = torch.load(weights_path + '/%s' % model_lst[-1], map_location='cpu')
         model.load_state_dict(checkpoint['model_state_dict'])
         model.eval()
 
@@ -131,7 +150,7 @@ def main():
 
         detections = yolo.detect(yolo_img)
 
-        for detection in detections:
+        for i, detection in enumerate(detections):
 
             if not averages.recognized_class(detection.detected_class):
                 continue
@@ -172,22 +191,33 @@ def main():
             else:
                 location = plot_regressed_3d_bbox(img, proj_matrix, box_2d, dim, alpha, theta_ray)
 
-            if not FLAGS.hide_debug:
-                print('Estimated pose: %s' % location)
+            corners = create_corners(dim, location, rotation_matrix(alpha + theta_ray))
+
+            xValues = set(map(lambda x: x[0], corners))
+            yValues = set(map(lambda y: y[1], corners))
+            zValues = set(map(lambda z: z[2], corners))
+            colours = dominantColors(truth_img[box_2d[0][1]:box_2d[1][1],box_2d[0][0]:box_2d[1][0]],3)
+
+            # output = 'Object %s   |   Width %.2f   |   Height: %.2f   |   Length: %.2f   |   Colour: %s   |   Location: %s' % (detected_class, max(xValues) - min(xValues), max(yValues) - min(yValues), max(zValues) - min(zValues),colours[0],[round(elem, 2) for elem in location])
+            # f.write(output+'\n')
+            # print(output)
 
         if FLAGS.show_yolo:
             numpy_vertical = np.concatenate((truth_img, img), axis=0)
             cv2.imshow('SPACE for next image, any other key to exit', numpy_vertical)
         else:
             cv2.imshow('3D detections', img)
+            # cv2.imwrite('results/' + str(time.time()) + '.png', img)
 
         if not FLAGS.hide_debug:
-            print("\n")
-            print('Got %s poses in %.3f seconds' % (len(detections), time.time() - start_time))
-            print('-------------')
+            # output = 'Image: %s' % (img_id + '.png')
+            # f.write(output+'\n')
+            # print(output)
+            print('------------------------------------\n')
 
         if FLAGS.video:
-            cv2.waitKey(1)
+            if cv2.waitKey(1) == 27:
+                exit()
         else:
             if cv2.waitKey(0) != 32:  # space bar
                 exit()
