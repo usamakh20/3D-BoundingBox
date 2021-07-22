@@ -6,9 +6,7 @@ Uses YOLO to obtain 2D box, PyTorch to get 3D box, plots both
 SPACE bar for next image, any other key to exit
 """
 
-
 from torch_lib.Dataset import *
-from library.Math import *
 from library.Plotting import *
 from torch_lib import Model, ClassAverages
 from yolo.yolo import cv_Yolo
@@ -20,11 +18,10 @@ import numpy as np
 import cv2
 
 import torch
-import torch.nn as nn
-from torch.autograd import Variable
 from torchvision.models import vgg
 
 import argparse
+
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -58,7 +55,6 @@ parser.add_argument("--hide-debug", action="store_true",
 
 
 def plot_regressed_3d_bbox(img, cam_to_img, box_2d, dimensions, alpha, theta_ray, img_2d=None):
-
     # the math! returns X, the corners used for constraint
     location, X = calc_location(dimensions, cam_to_img, box_2d, alpha, theta_ray)
 
@@ -67,12 +63,12 @@ def plot_regressed_3d_bbox(img, cam_to_img, box_2d, dimensions, alpha, theta_ray
     if img_2d is not None:
         plot_2d_box(img_2d, box_2d)
 
-    plot_3d_box(img, cam_to_img, orient, dimensions, location) # 3d boxes
+    plot_3d_box(img, cam_to_img, orient, dimensions, location)  # 3d boxes
 
     return location
 
-def main():
 
+def main():
     FLAGS = parser.parse_args()
 
     # load torch
@@ -82,11 +78,11 @@ def main():
         print('No previous model found, please train first!')
         exit()
     else:
-        print('Using previous model %s'%model_lst[-1])
+        print('Using previous model %s' % model_lst[-1])
         my_vgg = vgg.vgg19_bn(pretrained=True)
         # TODO: load bins from file or something
-        model = Model.Model(features=my_vgg.features, bins=2).cuda()
-        checkpoint = torch.load(weights_path + '/%s'%model_lst[-1])
+        model = Model.Model(features=my_vgg.features, bins=2)
+        checkpoint = torch.load(weights_path + '/%s' % model_lst[-1],map_location='cpu')
         model.load_state_dict(checkpoint['model_state_dict'])
         model.eval()
 
@@ -106,7 +102,6 @@ def main():
             image_dir = "eval/video/2011_09_26/image_2/"
             cal_dir = "eval/video/2011_09_26/"
 
-
     img_path = os.path.abspath(os.path.dirname(__file__)) + "/" + image_dir
     # using P_rect from global calibration file
     calib_path = os.path.abspath(os.path.dirname(__file__)) + "/" + cal_dir
@@ -118,7 +113,7 @@ def main():
     try:
         ids = [x.split('.')[0] for x in sorted(os.listdir(img_path))]
     except:
-        print("\nError: no images in %s"%img_path)
+        print("\nError: no images in %s" % img_path)
         exit()
 
     for img_id in ids:
@@ -154,8 +149,8 @@ def main():
             box_2d = detection.box_2d
             detected_class = detection.detected_class
 
-            input_tensor = torch.zeros([1,3,224,224]).cuda()
-            input_tensor[0,:,:,:] = input_img
+            input_tensor = torch.zeros([1, 3, 224, 224])
+            input_tensor[0, :, :, :] = input_img
 
             [orient, conf, dim] = model(input_tensor)
             orient = orient.cpu().data.numpy()[0, :, :]
@@ -178,7 +173,7 @@ def main():
                 location = plot_regressed_3d_bbox(img, proj_matrix, box_2d, dim, alpha, theta_ray)
 
             if not FLAGS.hide_debug:
-                print('Estimated pose: %s'%location)
+                print('Estimated pose: %s' % location)
 
         if FLAGS.show_yolo:
             numpy_vertical = np.concatenate((truth_img, img), axis=0)
@@ -188,14 +183,15 @@ def main():
 
         if not FLAGS.hide_debug:
             print("\n")
-            print('Got %s poses in %.3f seconds'%(len(detections), time.time() - start_time))
+            print('Got %s poses in %.3f seconds' % (len(detections), time.time() - start_time))
             print('-------------')
 
         if FLAGS.video:
             cv2.waitKey(1)
         else:
-            if cv2.waitKey(0) != 32: # space bar
+            if cv2.waitKey(0) != 32:  # space bar
                 exit()
+
 
 if __name__ == '__main__':
     main()
